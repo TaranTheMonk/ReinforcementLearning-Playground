@@ -1,6 +1,5 @@
-
 #!/usr/bin/env python3
-import gym
+import gym, gym.spaces
 from collections import namedtuple
 import numpy as np
 from tensorboardX import SummaryWriter
@@ -13,6 +12,18 @@ import torch.optim as optim
 HIDDEN_SIZE = 128
 BATCH_SIZE = 16
 PERCENTILE = 70
+
+
+class DiscreteOneHotWrapper(gym.ObservationWrapper):
+    def __init__(self, env):
+        super(DiscreteOneHotWrapper, self).__init__(env)
+        assert isinstance(env.observation_space, gym.spaces.Discrete)
+        self.observation_space = gym.spaces.Box(0.0, 1.0, (env.observation_space.n, ), dtype=np.float32)
+
+    def observation(self, observation):
+        res = np.copy(self.observation_space.low)
+        res[observation] = 1.0
+        return res
 
 
 class Net(nn.Module):
@@ -76,15 +87,15 @@ def filter_batch(batch, percentile):
 
 
 if __name__ == "__main__":
-    env = gym.make("CartPole-v0")
-    env = gym.wrappers.Monitor(env, directory="mon", force=True)
+    env = DiscreteOneHotWrapper(gym.make("FrozenLake-v0"))
+    # env = gym.wrappers.Monitor(env, directory="mon", force=True)
     obs_size = env.observation_space.shape[0]
     n_actions = env.action_space.n
 
     net = Net(obs_size, HIDDEN_SIZE, n_actions)
     objective = nn.CrossEntropyLoss()
     optimizer = optim.Adam(params=net.parameters(), lr=0.01)
-    writer = SummaryWriter(comment="-cartpole")
+    writer = SummaryWriter(comment="-frozenlake-naive")
 
     for iter_no, batch in enumerate(iterate_batches(env, net, BATCH_SIZE)):
         obs_v, acts_v, reward_b, reward_m = filter_batch(batch, PERCENTILE)
@@ -98,7 +109,7 @@ if __name__ == "__main__":
         writer.add_scalar("loss", loss_v.item(), iter_no)
         writer.add_scalar("reward_bound", reward_b, iter_no)
         writer.add_scalar("reward_mean", reward_m, iter_no)
-        if reward_m > 199:
+        if reward_m > 0.8:
             print("Solved!")
             break
     writer.close()
